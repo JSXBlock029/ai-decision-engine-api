@@ -1,0 +1,54 @@
+# API Keys and Sensitive Data
+api_keys.json
+rate_limits.json
+subscriptions.json
+production_keys_generated.json
+*.key
+*.secret
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backup files
+BACKUP_*/
+*.bak
+
+# never commit secrets or local state
+.env
+.env.*
+!.env.example
+!.env.template
+*_keys*.json
+*PRODUCTION_KEYS*
+ai_memory.json
+autonomy_tracker.json
+.claude/
+*.log
+api_analytics.json
+backups/

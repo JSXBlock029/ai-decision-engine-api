@@ -1,0 +1,315 @@
+openapi: 3.0.3
+info:
+  title: AI Decision Engine API
+  description: |
+    RESTful API for AI-driven decision-making framework. 
+    Provides autonomous decision evaluation, risk assessment, autonomy level tracking, and memory-based insights.
+    
+    Built by AI Decision Engine
+  version: 1.0.0
+  contact:
+    name: AI Decision Engine
+    url: https://github.com/lowriskbtc/ai-decision-engine-api
+  license:
+    name: Proprietary
+    
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+  - url: https://api-dev.example.com/v1
+    description: Development server
+
+tags:
+  - name: Decisions
+    description: Decision making and evaluation endpoints
+  - name: Risk Assessment
+    description: Risk analysis and assessment
+  - name: Autonomy
+    description: AI autonomy level tracking
+  - name: Memory
+    description: Memory-based insights and learning
+  - name: Health
+    description: API health and status
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check API health and status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /decisions/evaluate:
+    post:
+      tags:
+        - Decisions
+      summary: Evaluate a decision
+      description: Evaluate a decision using AI decision-making framework
+      operationId: evaluateDecision
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionRequest'
+      responses:
+        '200':
+          description: Decision evaluated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized - Invalid API key
+        '429':
+          description: Rate limit exceeded
+
+  /risk/assess:
+    post:
+      tags:
+        - Risk Assessment
+      summary: Assess risk level
+      description: Assess risk level for a given decision or action
+      operationId: assessRisk
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - category
+              properties:
+                amount:
+                  type: number
+                  description: Financial amount involved
+                category:
+                  type: string
+                  enum: [STRATEGIC, OPERATIONAL, FINANCIAL, MARKETING, RND, COMPLIANCE]
+                  description: Decision category
+                description:
+                  type: string
+                  description: Description of the decision
+      responses:
+        '200':
+          description: Risk assessed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  risk_level:
+                    type: string
+                    enum: [LOW, MEDIUM, HIGH, CRITICAL]
+                  risk_score:
+                    type: number
+                    minimum: 0
+                    maximum: 100
+                  recommendation:
+                    type: string
+                  thresholds:
+                    type: object
+                    properties:
+                      max_amount:
+                        type: number
+                      auto_execute:
+                        type: boolean
+
+  /autonomy/level:
+    get:
+      tags:
+        - Autonomy
+      summary: Get autonomy level
+      description: Get current AI autonomy level for a system
+      operationId: getAutonomyLevel
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Autonomy level retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  autonomy_level:
+                    type: number
+                    minimum: 0
+                    maximum: 100
+                    description: Autonomy percentage
+                  human_tasks:
+                    type: array
+                    items:
+                      type: string
+                  ai_tasks:
+                    type: array
+                    items:
+                      type: string
+                  proven_capabilities:
+                    type: integer
+
+  /autonomy/should-execute:
+    post:
+      tags:
+        - Autonomy
+      summary: Check if AI should auto-execute
+      description: Determine if AI should autonomously execute a task
+      operationId: shouldAutoExecute
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - task_type
+                - risk_level
+              properties:
+                task_type:
+                  type: string
+                  description: Type of task
+                risk_level:
+                  type: string
+                  enum: [LOW, MEDIUM, HIGH, CRITICAL]
+      responses:
+        '200':
+          description: Execution decision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  should_execute:
+                    type: boolean
+                  reason:
+                    type: string
+
+  /memory/insights:
+    post:
+      tags:
+        - Memory
+      summary: Get memory-based insights
+      description: Get insights from AI memory system based on past decisions
+      operationId: getMemoryInsights
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision_data:
+                  type: object
+                  description: Decision data to analyze
+      responses:
+        '200':
+          description: Memory insights retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  similar_decisions:
+                    type: array
+                    items:
+                      type: object
+                  success_patterns:
+                    type: object
+                  recommendations:
+                    type: array
+                    items:
+                      type: string
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Your API key for authentication
+
+  schemas:
+    DecisionRequest:
+      type: object
+      required:
+        - category
+        - amount
+      properties:
+        category:
+          type: string
+          enum: [STRATEGIC, OPERATIONAL, FINANCIAL, MARKETING, RND, COMPLIANCE]
+          description: Category of decision
+        amount:
+          type: number
+          description: Financial amount involved
+        description:
+          type: string
+          description: Description of the decision
+        data:
+          type: object
+          description: Additional decision data
+
+    DecisionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique decision ID
+        timestamp:
+          type: string
+          format: date-time
+        category:
+          type: string
+        risk_level:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+        description:
+          type: string
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [PENDING, EXECUTED, APPROVED, REJECTED]
+        action_required:
+          type: string
+          enum: [EXECUTE_IMMEDIATELY, AI_EXECUTE_IMMEDIATELY, WAIT_HUMAN_APPROVAL, WAIT_HUMAN_REVIEW, LOG_ONLY]
+        ai_can_decide:
+          type: boolean
+          description: Whether AI can make this decision autonomously
+        autonomy_level:
+          type: number
+          minimum: 0
+          maximum: 100
+        memory_insights:
+          type: object
+          description: Insights from memory system
+

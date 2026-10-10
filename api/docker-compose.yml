@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG=False
+    volumes:
+      - ..:/app
+    restart: unless-stopped
+
+  # For production, add database service:
+  # db:
+  #   image: postgres:15
+  #   environment:
+  #     POSTGRES_DB: ai_decision_api
+  #     POSTGRES_USER: api_user
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+
+# volumes:
+#   postgres_data:
+

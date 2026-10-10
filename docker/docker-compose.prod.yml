@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile.prod
+    ports:
+      - "8000:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG=False
+      - LOG_LEVEL=INFO
+    volumes:
+      - ../ai_memory.json:/app/ai_memory.json
+      - ../autonomy_tracker.json:/app/autonomy_tracker.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  waitlist:
+    build:
+      context: ..
+      dockerfile: saas_landing/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+    volumes:
+      - ../waitlist.json:/app/waitlist.json
+    restart: unless-stopped
