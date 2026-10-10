@@ -21,6 +21,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"
 
-# SQLite key store: safe with several workers. (The JSON store would need --workers 1.)
+# Keys and usage live in SQLite. Subscriptions, analytics and the signup throttle are still
+# per-process (JSON files / memory), so keep a single worker until those move too.
 ENV KEY_STORE=sqlite KEY_DB_PATH=/data/api_keys.sqlite3
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

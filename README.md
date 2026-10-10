@@ -57,7 +57,7 @@ All settings are environment variables; see [.env.example](.env.example). The im
 | `ADMIN_API_KEY` | Operator key for admin routes. If unset, admin routes are disabled. |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins. `*` is allowed but disables credentials. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, `STRIPE_ENTERPRISE_PRICE_ID` | Enable billing. Without them, billing routes return 503. |
-| `KEY_STORE` | `json` (default) or `sqlite`. SQLite is safe across workers and processes and imports an existing JSON store on first start. |
+| `KEY_STORE` | `json` (default) or `sqlite`. SQLite keeps key and usage counts exact across processes and imports an existing JSON store on first start. |
 | `KEY_DB_PATH` | SQLite file when `KEY_STORE=sqlite` (default `api_keys.sqlite3`). |
 | `API_KEYS_FILE`, `RATE_LIMIT_FILE`, `SUBSCRIPTIONS_FILE` | JSON state files. Use a persistent volume. |
 
@@ -82,7 +82,7 @@ The suite uses a temporary directory for all state, so it never touches your dat
 
 ## Known limitations
 
-- With the default JSON store, state is correct for one worker. Set `KEY_STORE=sqlite` for several workers on one machine; replicas on several machines need a shared database (Postgres).
+- Keys and usage can live in SQLite (`KEY_STORE=sqlite`), which is safe across processes. Subscriptions, analytics and the signup throttle are still per-process (JSON files and memory), so run a single worker until those move to the database too.
 - The signup throttle is in memory and resets on restart.
 - Decision risk is threshold-based on `amount`; the memory layer records history but does not yet adjust risk (see the `pass` in `_assess_risk`).
 - The Docker image has not been built in CI; the app itself is exercised by the test suite and a live server smoke test.

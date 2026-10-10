@@ -14,7 +14,7 @@
 
 ## Known limits
 
-- The default JSON store suits a single worker; `KEY_STORE=sqlite` is safe across workers on one machine. Use a shared database before scaling across machines.
+- Run a single worker. `KEY_STORE=sqlite` makes keys and usage process-safe, but subscriptions, analytics and the signup throttle are still per-process.
 - The per-IP throttle is in memory. Behind a proxy, set `TRUST_PROXY=true` only if the proxy overwrites `X-Forwarded-For`.
 - A lost key cannot be recovered; it has to be reissued.
 

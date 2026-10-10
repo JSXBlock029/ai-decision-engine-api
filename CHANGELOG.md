@@ -4,7 +4,7 @@
 
 ### Added
 - SQLite key store (`KEY_STORE=sqlite`): each operation is its own transaction, so keys and usage counts stay exact across threads, workers and processes. On first start it imports an existing JSON store, hashing any legacy raw keys. JSON remains the default; CI runs the full suite against both backends.
-- The Docker image now uses the SQLite store and runs two workers.
+- The Docker image now uses the SQLite store (still one worker: subscriptions, analytics and the signup throttle are per-process).
 
 ## [1.1.0] - 2026-10-10
 
