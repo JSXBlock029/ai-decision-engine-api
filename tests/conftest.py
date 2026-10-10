@@ -13,6 +13,7 @@ for name, fname in {
     "RATE_LIMIT_FILE": "rate_limits.json",
     "SUBSCRIPTIONS_FILE": "subscriptions.json",
     "MARKETING_ANALYTICS_FILE": "marketing_analytics.json",
+    "KEY_DB_PATH": "api_keys.sqlite3",
 }.items():
     os.environ[name] = str(Path(_STATE) / fname)
 os.environ["ADMIN_API_KEY"] = "test-admin-key"

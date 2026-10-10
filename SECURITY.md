@@ -14,7 +14,7 @@
 
 ## Known limits
 
-- JSON-file state suits a single worker. Use a database before scaling out.
+- The default JSON store suits a single worker; `KEY_STORE=sqlite` is safe across workers on one machine. Use a shared database before scaling across machines.
 - The per-IP throttle is in memory. Behind a proxy, set `TRUST_PROXY=true` only if the proxy overwrites `X-Forwarded-For`.
 - A lost key cannot be recovered; it has to be reissued.
 

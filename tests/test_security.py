@@ -126,7 +126,7 @@ def test_plaintext_store_is_migrated(tmp_path, monkeypatch):
     usage_file.write_text(json.dumps({"legacy_key_abc_2026-10": {"count": 7}}))
     monkeypatch.setattr(akm, "API_KEYS_FILE", str(keys_file))
     monkeypatch.setattr(akm, "RATE_LIMIT_FILE", str(usage_file))
-    mgr = akm.APIKeyManager()
+    mgr = akm.APIKeyManager(backend="json")
     assert "legacy_key_abc" not in keys_file.read_text()
     assert mgr.get_key_info("legacy_key_abc")["tier"] == "pro"
     assert "legacy_key_abc" not in usage_file.read_text()
@@ -138,7 +138,7 @@ def test_corrupt_store_does_not_crash(tmp_path, monkeypatch):
     keys_file.write_text("{ not json")
     monkeypatch.setattr(akm, "API_KEYS_FILE", str(keys_file))
     monkeypatch.setattr(akm, "RATE_LIMIT_FILE", str(tmp_path / "u.json"))
-    mgr = akm.APIKeyManager()
+    mgr = akm.APIKeyManager(backend="json")
     assert mgr.validate_api_key("anything") is None
 
 

@@ -57,7 +57,9 @@ All settings are environment variables; see [.env.example](.env.example). The im
 | `ADMIN_API_KEY` | Operator key for admin routes. If unset, admin routes are disabled. |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins. `*` is allowed but disables credentials. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, `STRIPE_ENTERPRISE_PRICE_ID` | Enable billing. Without them, billing routes return 503. |
-| `API_KEYS_FILE`, `RATE_LIMIT_FILE`, `SUBSCRIPTIONS_FILE` | Where state is stored. Use a persistent volume. |
+| `KEY_STORE` | `json` (default) or `sqlite`. SQLite is safe across workers and processes and imports an existing JSON store on first start. |
+| `KEY_DB_PATH` | SQLite file when `KEY_STORE=sqlite` (default `api_keys.sqlite3`). |
+| `API_KEYS_FILE`, `RATE_LIMIT_FILE`, `SUBSCRIPTIONS_FILE` | JSON state files. Use a persistent volume. |
 
 ## Run in production
 
@@ -76,11 +78,11 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-The suite uses a temporary directory for all state, so it never touches your data. It covers authentication and the key lifecycle, input validation, free-tier limits, the unpaid-checkout bypass, admin gating, webhook signature checks and subscription downgrades, plaintext-key migration, and concurrent usage counting.
+The suite uses a temporary directory for all state, so it never touches your data. CI runs it twice, once per storage backend. It covers authentication and the key lifecycle, input validation, free-tier limits, the unpaid-checkout bypass, admin gating, webhook signature checks and subscription downgrades, plaintext-key migration, and concurrent usage counting.
 
 ## Known limitations
 
-- State is stored in JSON files with atomic writes and an in-process lock. That is correct for one worker. Running several workers or replicas needs a real database.
+- With the default JSON store, state is correct for one worker. Set `KEY_STORE=sqlite` for several workers on one machine; replicas on several machines need a shared database (Postgres).
 - The signup throttle is in memory and resets on restart.
 - Decision risk is threshold-based on `amount`; the memory layer records history but does not yet adjust risk (see the `pass` in `_assess_risk`).
 - The Docker image has not been built in CI; the app itself is exercised by the test suite and a live server smoke test.

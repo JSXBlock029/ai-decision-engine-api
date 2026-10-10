@@ -68,8 +68,8 @@ def test_deactivated_key_rejected(client, manager, auth, pro_key):
 
 
 def test_keys_not_stored_in_plaintext(manager, pro_key):
-    raw = open(manager.keys_file, encoding="utf-8").read()
-    assert pro_key not in raw
+    raw = open(manager.keys_file, "rb").read()
+    assert pro_key.encode() not in raw
 
 
 # ---------- decisions / validation ----------
