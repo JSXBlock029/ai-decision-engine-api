@@ -6,6 +6,7 @@ Handles subscription management, payment processing, and billing
 import os
 import json
 import logging
+from api.api_key_manager import hash_key
 from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
@@ -149,7 +150,7 @@ class StripeService:
                 "url": session.url,
                 "tier": tier
             }
-        except stripe.error.StripeError as e:
+        except stripe.StripeError as e:
             logger.error(f"Stripe error creating checkout session: {e}")
             raise
     
@@ -168,7 +169,7 @@ class StripeService:
                 "tier": subscription.metadata.get("tier", "pro"),
                 "cancel_at_period_end": subscription.cancel_at_period_end
             }
-        except stripe.error.StripeError as e:
+        except stripe.StripeError as e:
             logger.error(f"Error retrieving subscription: {e}")
             return None
     
@@ -183,7 +184,7 @@ class StripeService:
                 cancel_at_period_end=True
             )
             return True
-        except stripe.error.StripeError as e:
+        except stripe.StripeError as e:
             logger.error(f"Error cancelling subscription: {e}")
             return False
     
@@ -198,7 +199,7 @@ class StripeService:
         subscriptions = self._load_subscriptions()
         
         subscriptions[subscription_id] = {
-            "api_key": api_key,
+            "api_key_hash": hash_key(api_key),
             "customer_email": customer_email,
             "tier": tier,
             "created_at": datetime.now().isoformat(),
@@ -206,14 +207,13 @@ class StripeService:
         }
         
         self._save_subscriptions(subscriptions)
-        logger.info(f"Linked subscription {subscription_id} to API key {api_key[:10]}...")
+        logger.info(f"Linked subscription {subscription_id} to an API key")
     
-    def get_api_key_from_subscription(self, subscription_id: str) -> Optional[str]:
-        """Get API key associated with subscription"""
-        subscriptions = self._load_subscriptions()
-        sub = subscriptions.get(subscription_id)
-        return sub.get("api_key") if sub else None
-    
+    def get_api_key_hash_from_subscription(self, subscription_id: str) -> Optional[str]:
+        """Digest of the API key issued for a subscription (raw keys are never stored)."""
+        sub = self._load_subscriptions().get(subscription_id)
+        return sub.get("api_key_hash") if sub else None
+
     def update_subscription_status(self, subscription_id: str, status: str):
         """Update subscription status"""
         subscriptions = self._load_subscriptions()
@@ -286,14 +286,14 @@ class StripeService:
             return None
         
         try:
-            event = stripe.Webhook.construct_event(
-                payload, signature, STRIPE_WEBHOOK_SECRET
-            )
-            return event
+            stripe.Webhook.construct_event(payload, signature, STRIPE_WEBHOOK_SECRET)
+            # The signature is valid, so parse the same bytes into a plain dict.
+            # (StripeObject stopped behaving like a dict in recent SDK versions.)
+            return json.loads(payload)
         except ValueError as e:
             logger.error(f"Invalid payload: {e}")
             return None
-        except stripe.error.SignatureVerificationError as e:
+        except stripe.SignatureVerificationError as e:
             logger.error(f"Invalid signature: {e}")
             return None
 

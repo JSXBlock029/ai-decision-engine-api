@@ -3,6 +3,7 @@ Python SDK for AI Decision Engine API
 Easy-to-use client library for integrating with the API
 """
 
+import os
 import requests
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -183,7 +184,7 @@ class AIDecisionAPIClient:
 if __name__ == "__main__":
     # Initialize client
     client = AIDecisionAPIClient(
-        api_key="dev_key_123",
+        api_key=os.environ["AI_DECISION_API_KEY"],  # export AI_DECISION_API_KEY=<your key>
         base_url="http://localhost:8000"
     )
     

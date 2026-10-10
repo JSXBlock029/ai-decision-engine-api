@@ -3,6 +3,7 @@ Enhanced API Client Example
 Complete example of using the AI Decision Engine API
 """
 
+import os
 from api.client import AIDecisionAPIClient
 import json
 from datetime import datetime
@@ -17,7 +18,7 @@ def example_usage():
     
     # Initialize client
     client = AIDecisionAPIClient(
-        api_key="dev_key_123",
+        api_key=os.environ["AI_DECISION_API_KEY"],  # export AI_DECISION_API_KEY=<your key>
         base_url="http://localhost:8000"
     )
     

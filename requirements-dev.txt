@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest>=9,<10
+httpx2>=2
+flake8>=7
+# Only needed by the client SDK, CLI and examples, not by the server:
+requests>=2.32

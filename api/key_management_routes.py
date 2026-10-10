@@ -5,6 +5,7 @@ Backend endpoints for the user dashboard
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from api.api_key_manager import api_key_manager
+from api.admin_auth import verify_admin
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -18,24 +19,7 @@ class GenerateKeyRequest(BaseModel):
 class DeactivateKeyRequest(BaseModel):
     key: str
 
-def verify_admin_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> Dict[str, Any]:
-    """Verify admin API key"""
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key required")
-    
-    key_info = api_key_manager.validate_api_key(x_api_key)
-    if not key_info:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    # Allow dev/pro/enterprise tiers for key management
-    tier = key_info.get("tier", "").lower()
-    if tier not in ["dev", "pro", "enterprise"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Key management requires Dev, Pro, or Enterprise tier"
-        )
-    
-    return key_info
+verify_admin_key = verify_admin
 
 @router.get("/list")
 async def list_keys(api_info: Dict[str, Any] = Depends(verify_admin_key)):
@@ -51,7 +35,7 @@ async def list_keys(api_info: Dict[str, Any] = Depends(verify_admin_key)):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error listing keys: {str(e)}"
+            detail="Error listing keys"
         )
 
 @router.post("/generate")
@@ -79,7 +63,7 @@ async def generate_key(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error generating key: {str(e)}"
+            detail="Error generating key"
         )
 
 @router.post("/deactivate")
@@ -108,7 +92,7 @@ async def deactivate_key(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error deactivating key: {str(e)}"
+            detail="Error deactivating key"
         )
 
 @router.get("/info/{key}")
@@ -137,7 +121,7 @@ async def get_key_info(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error getting key info: {str(e)}"
+            detail="Error getting key info"
         )
 
 @router.get("/usage/{key}")
@@ -147,29 +131,15 @@ async def get_key_usage(
 ):
     """Get usage statistics for a specific API key"""
     try:
-        import json
-        import os
-        
-        # Load rate limits
-        rate_limit_file = os.getenv("RATE_LIMIT_FILE", "rate_limits.json")
-        try:
-            with open(rate_limit_file, "r") as f:
-                rate_limits = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            rate_limits = {}
-        
-        # Get current month usage
-        current_month = datetime.now().strftime("%Y-%m")
-        month_key = f"{key}_{current_month}"
-        
-        usage_data = rate_limits.get(month_key, {})
+        usage_data = api_key_manager.get_usage_stats(key)
+        current_month = usage_data.get("month")
         key_info = api_key_manager.get_key_info(key)
-        
+
         if not key_info:
             raise HTTPException(status_code=404, detail="Key not found")
         
         limit = key_info.get("requests_per_month", 100)
-        used = usage_data.get("count", 0)
+        used = usage_data.get("total_requests", 0)
         
         return {
             "success": True,
@@ -179,7 +149,7 @@ async def get_key_usage(
             "limit": limit,
             "remaining": max(0, limit - used),
             "percentage": (used / limit * 100) if limit > 0 else 0,
-            "first_request": usage_data.get("first_request"),
+            "first_request": None,
             "last_request": usage_data.get("last_request"),
             "timestamp": datetime.now().isoformat()
         }
@@ -188,6 +158,6 @@ async def get_key_usage(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error getting usage: {str(e)}"
+            detail="Error getting usage"
         )
 

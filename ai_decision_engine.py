@@ -1,12 +1,13 @@
 """
 AI Decision-Making Framework
-Autonomous decision engine for AI Decision Engine
+Rule-based decision engine with memory and a gradual-autonomy gate
 """
 
 from enum import Enum
 from datetime import datetime
 from typing import Dict, Any, List
 import json
+import uuid
 from ai_memory_system import AIMemory, MemoryAwareDecisionEngine
 from autonomy_tracker import GradualAutonomySystem
 
@@ -54,7 +55,7 @@ class AIDecisionEngine:
         current_autonomy = self.autonomy.get_autonomy_level()
         
         decision = {
-            "id": f"DEC_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "id": f"DEC_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}",
             "timestamp": datetime.now().isoformat(),
             "category": decision_data.get("category", DecisionCategory.OPERATIONAL.value),
             "risk_level": risk_level.value,  # Already a string from .value
@@ -188,178 +189,3 @@ class AIDecisionEngine:
                 break
 
 # Income Strategy Evaluator
-class IncomeStrategyEvaluator:
-    """AI system for evaluating income generation strategies"""
-    
-    STRATEGIES = {
-        "CRYPTO_TRADING": {"roi_potential": "high", "risk": "high", "scalability": "medium"},
-        "DEFI_YIELD": {"roi_potential": "medium", "risk": "medium", "scalability": "high"},
-        "SAAS_PRODUCT": {"roi_potential": "high", "risk": "low", "scalability": "high"},
-        "E_COMMERCE": {"roi_potential": "medium", "risk": "low", "scalability": "high"},
-        "CONTENT_CREATION": {"roi_potential": "medium", "risk": "low", "scalability": "medium"},
-        "CONSULTING": {"roi_potential": "high", "risk": "low", "scalability": "low"},
-        "AFFILIATE_MARKETING": {"roi_potential": "medium", "risk": "low", "scalability": "high"},
-        "API_SERVICES": {"roi_potential": "high", "risk": "low", "scalability": "very_high"}
-    }
-    
-    def evaluate_strategies(self, initial_capital: float) -> List[Dict[str, Any]]:
-        """Evaluate all potential income strategies"""
-        
-        evaluated = []
-        
-        for strategy_name, attributes in self.STRATEGIES.items():
-            score = self._calculate_score(attributes, initial_capital)
-            
-            evaluated.append({
-                "strategy": strategy_name,
-                "attributes": attributes,
-                "score": score,
-                "recommended_allocation": self._calculate_allocation(score, initial_capital),
-                "risk_level": self._map_risk(attributes["risk"]),
-                "recommendation": "RECOMMENDED" if score > 70 else "CONSIDER" if score > 50 else "LOW_PRIORITY"
-            })
-        
-        # Sort by score
-        evaluated.sort(key=lambda x: x["score"], reverse=True)
-        
-        return evaluated
-    
-    def _calculate_score(self, attributes: Dict[str, str], capital: float) -> float:
-        """Calculate strategy score"""
-        score = 0
-        
-        # ROI potential scoring
-        roi_scores = {"very_high": 40, "high": 30, "medium": 20, "low": 10}
-        score += roi_scores.get(attributes.get("roi_potential", "medium"), 20)
-        
-        # Scalability scoring
-        scale_scores = {"very_high": 30, "high": 25, "medium": 15, "low": 5}
-        score += scale_scores.get(attributes.get("scalability", "medium"), 15)
-        
-        # Risk adjustment (lower risk = higher score)
-        risk_adjustments = {"low": 30, "medium": 20, "high": 10}
-        score += risk_adjustments.get(attributes.get("risk", "medium"), 20)
-        
-        return score
-    
-    def _calculate_allocation(self, score: float, capital: float) -> float:
-        """Calculate recommended capital allocation"""
-        if score > 70:
-            return capital * 0.30  # 30% for top strategies
-        elif score > 50:
-            return capital * 0.15  # 15% for good strategies
-        else:
-            return capital * 0.05  # 5% for low priority
-    
-    def _map_risk(self, risk_str: str) -> RiskLevel:
-        """Map risk string to RiskLevel"""
-        mapping = {
-            "low": RiskLevel.LOW,
-            "medium": RiskLevel.MEDIUM,
-            "high": RiskLevel.HIGH
-        }
-        return mapping.get(risk_str, RiskLevel.MEDIUM)
-
-# Performance Tracker
-class PerformanceTracker:
-    """Track performance metrics"""
-    
-    def __init__(self):
-        self.metrics = {
-            "revenue": 0.0,
-            "capital_base": 0.0,
-            "active_streams": 0,
-            "growth_rate": 0.0,
-            "risk_score": 0.0,
-            "compliance_score": 100.0,
-            "decisions_made": 0,
-            "success_rate": 0.0
-        }
-        self.history = []
-    
-    def update_metric(self, metric_name: str, value: float):
-        """Update a metric"""
-        if metric_name in self.metrics:
-            self.metrics[metric_name] = value
-            self._record_history()
-    
-    def get_metrics(self) -> Dict[str, float]:
-        """Get current metrics"""
-        return self.metrics.copy()
-    
-    def _record_history(self):
-        """Record metrics history"""
-        self.history.append({
-            "timestamp": datetime.now().isoformat(),
-            "metrics": self.metrics.copy()
-        })
-
-# Main System
-class DecisionEngineSystem:
-    """Main AI system orchestrator"""
-    
-    def __init__(self):
-        self.decision_engine = AIDecisionEngine()
-        self.strategy_evaluator = IncomeStrategyEvaluator()
-        self.performance_tracker = PerformanceTracker()
-        self.phase = 1
-        self.status = "INITIALIZING"
-    
-    def initialize(self, initial_capital: float = 0.0):
-        """Initialize the system"""
-        self.performance_tracker.update_metric("capital_base", initial_capital)
-        self.status = "ACTIVE"
-        print(f"AI Decision Engine System initialized with capital: ${initial_capital:,.2f}")
-    
-    def evaluate_income_strategies(self) -> List[Dict[str, Any]]:
-        """Evaluate potential income strategies"""
-        capital = self.performance_tracker.metrics["capital_base"]
-        strategies = self.strategy_evaluator.evaluate_strategies(capital)
-        
-        # Log the evaluation
-        decision = self.decision_engine.evaluate_decision({
-            "category": DecisionCategory.STRATEGIC.value,
-            "description": "Income strategy evaluation",
-            "amount": 0,
-            "strategies": strategies
-        })
-        
-        self.decision_engine.log_decision(decision)
-        
-        return strategies
-    
-    def make_decision(self, decision_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Make a decision through the AI system"""
-        decision = self.decision_engine.evaluate_decision(decision_data)
-        
-        # Auto-execute if low/medium risk
-        if decision["action_required"] == "EXECUTE_IMMEDIATELY":
-            decision = self.decision_engine.execute_decision(decision)
-        
-        return decision
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get system status"""
-        return {
-            "phase": self.phase,
-            "status": self.status,
-            "metrics": self.performance_tracker.get_metrics(),
-            "recent_decisions": self.decision_engine.get_decisions(10)
-        }
-
-if __name__ == "__main__":
-    # Initialize system
-    system = DecisionEngineSystem()
-    system.initialize(initial_capital=0.0)  # Will be updated after contract analysis
-    
-    # Evaluate strategies
-    strategies = system.evaluate_income_strategies()
-    
-    print("\n=== TOP RECOMMENDED STRATEGIES ===")
-    for i, strategy in enumerate(strategies[:5], 1):
-        print(f"{i}. {strategy['strategy']}: Score {strategy['score']:.1f} - {strategy['recommendation']}")
-    
-    print(f"\n=== SYSTEM STATUS ===")
-    status = system.get_status()
-    print(json.dumps(status, indent=2))
-

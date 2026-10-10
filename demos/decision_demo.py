@@ -3,6 +3,7 @@ Demo Application
 Example application using the API
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -118,7 +119,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="AI Decision Engine Demo")
-    parser.add_argument("--api-key", default="dev_key_123", help="API key")
+    parser.add_argument("--api-key", default=os.environ.get("AI_DECISION_API_KEY"), required=not os.environ.get("AI_DECISION_API_KEY"), help="API key (or set AI_DECISION_API_KEY)")
     parser.add_argument("--base-url", default="http://localhost:8000", help="Base URL")
     
     args = parser.parse_args()

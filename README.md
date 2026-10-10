@@ -1,268 +1,97 @@
-# 🚀 AI Decision Engine API
+# AI Decision Engine API
 
-> AI-driven decision-making framework for autonomous systems
+A FastAPI service that scores decisions by risk, remembers past outcomes, and gates how much an automated system may do on its own. It ships with API-key authentication, tiered quotas, optional Stripe subscriptions, and usage analytics.
 
-[![Status](https://img.shields.io/badge/status-production--ready-brightgreen)](https://github.com)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com)
-[![Python](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
+The decision logic is deliberately simple and explainable: risk comes from amount thresholds, and an "autonomy level" that grows with recorded successes decides whether a task may run without a human. It is a framework for wiring that gate into your own agents, not a model.
 
----
-
-## 📋 Overview
-
-The AI Decision Engine API provides a comprehensive RESTful API for AI-driven decision-making, risk assessment, and autonomy tracking. Built with FastAPI, it's designed for developers building autonomous AI systems.
-
-### Key Features
-
-- ✅ **18+ API Endpoints** - Complete decision-making framework
-- ✅ **Authentication** - API key-based security with tiered access
-- ✅ **Analytics** - Real-time usage tracking and metrics
-- ✅ **Documentation** - Interactive API documentation
-- ✅ **Dashboard** - Web-based user interface
-- ✅ **Production Ready** - Fully tested and deployment-ready
-
----
-
-## 🚀 Quick Start
-
-### Installation
+## Quickstart
 
 ```bash
-# Clone repository
-git clone <repository-url>
-cd ai-decision-engine-api
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 
-# Install dependencies
-pip install -r api/requirements.txt
+export ADMIN_API_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+uvicorn api.main:app --reload
 ```
 
-### Start Server
+Open http://localhost:8000/docs for the interactive API reference, then:
 
 ```bash
-cd api
-uvicorn main:app --reload
+# 1. get a free key (shown once, stored only as a SHA-256 digest)
+curl -s -X POST localhost:8000/api/keys/free -H 'content-type: application/json' \
+     -d '{"email": "you@example.com"}'
+
+# 2. evaluate a decision
+curl -s -X POST localhost:8000/decisions/evaluate \
+     -H 'X-API-Key: <your key>' -H 'content-type: application/json' \
+     -d '{"category": "FINANCIAL", "amount": 2500, "description": "renew hosting"}'
 ```
 
-### Access Documentation
+There are no built-in default keys. Every key is created through the API or with `python api/manage_api_keys.py generate pro`.
 
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+## Endpoints
 
-### Get API Key
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /health` | none | Liveness and current autonomy level |
+| `POST /decisions/evaluate` | API key | Score a decision, return risk level and required action |
+| `POST /risk/assess` | API key | Risk assessment for an amount and category |
+| `GET /autonomy/level` | API key | Current autonomy level |
+| `POST /autonomy/should-execute` | API key | Whether a task type at a risk level may run unattended |
+| `POST /memory/insights` | API key | Insights from stored decision history |
+| `GET /api/usage`, `/api/billing`, `/api/key/info` | API key | Usage, overage billing summary, key details |
+| `POST /api/keys/free` | none, throttled per IP | Issue a free-tier key |
+| `GET /pricing` | none | Tier pricing (HTML or JSON by `Accept` header) |
+| `POST /payment/checkout`, `GET /payment/success` | none | Stripe checkout; a key is issued only for a paid session |
+| `POST /webhooks/stripe` | Stripe signature | Subscription lifecycle (cancellation downgrades the key to free) |
+| `/api/keys/*`, `/analytics/*`, `GET /api/marketing/stats` | `X-Admin-Key` | Operator-only key management and global analytics |
+
+Free keys are capped at 100 requests per month. Paid tiers may exceed their included quota and are billed for overage.
+
+## Configuration
+
+All settings are environment variables; see [.env.example](.env.example). The important ones:
+
+| Variable | Purpose |
+|---|---|
+| `ADMIN_API_KEY` | Operator key for admin routes. If unset, admin routes are disabled. |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins. `*` is allowed but disables credentials. |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, `STRIPE_ENTERPRISE_PRICE_ID` | Enable billing. Without them, billing routes return 503. |
+| `API_KEYS_FILE`, `RATE_LIMIT_FILE`, `SUBSCRIPTIONS_FILE` | Where state is stored. Use a persistent volume. |
+
+## Run in production
 
 ```bash
-python api/manage_api_keys.py generate pro
+docker compose up --build        # state persists in the api-data volume
 ```
 
-### Test API
+Or deploy to Railway or Render using the included `railway.json` / `render.yaml`. The start command in every case is `uvicorn api.main:app` from the repository root.
+
+Stripe setup is covered in [STRIPE_SETUP_GUIDE.md](STRIPE_SETUP_GUIDE.md). Security properties and known limits are in [SECURITY.md](SECURITY.md).
+
+## Tests
 
 ```bash
-python api/test_api.py
+pip install -r requirements-dev.txt
+pytest
 ```
 
----
+The suite uses a temporary directory for all state, so it never touches your data. It covers authentication and the key lifecycle, input validation, free-tier limits, the unpaid-checkout bypass, admin gating, webhook signature checks and subscription downgrades, plaintext-key migration, and concurrent usage counting.
 
-## 📚 Documentation
+## Known limitations
 
-- **[API Documentation](api/README.md)** - Complete API reference
-- **[Integration Guide](api/INTEGRATION_GUIDE.md)** - How to integrate
-- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Deploy to production
-- **[Operational Runbook](OPERATIONAL_RUNBOOK.md)** - Operations guide
-- **[Changelog](CHANGELOG.md)** - Version history
-- **[Roadmap](ROADMAP.md)** - Future plans
+- State is stored in JSON files with atomic writes and an in-process lock. That is correct for one worker. Running several workers or replicas needs a real database.
+- The signup throttle is in memory and resets on restart.
+- Decision risk is threshold-based on `amount`; the memory layer records history but does not yet adjust risk (see the `pass` in `_assess_risk`).
+- The Docker image has not been built in CI; the app itself is exercised by the test suite and a live server smoke test.
 
----
-
-## 🏗️ Project Structure
+## Project layout
 
 ```
-ai-decision-engine-api/
-├── api/                    # API backend
-│   ├── main.py            # FastAPI application
-│   ├── api_key_manager.py # Authentication
-│   ├── analytics.py       # Analytics
-│   └── ...
-├── docs/                  # API documentation
-├── saas_landing/         # Landing page
-├── scripts/              # Automation scripts
-├── examples/             # Integration examples
-└── .github/workflows/    # CI/CD
+api/                  FastAPI app, key manager, Stripe service, analytics, admin routes
+ai_decision_engine.py risk assessment and action rules
+ai_memory_system.py   decision and event history
+autonomy_tracker.py   gradual autonomy levels
+sdk/ integrations/ examples/ demos/   client SDK, CLI and usage examples
+tests/                pytest suite
 ```
-
----
-
-## 🔑 API Endpoints
-
-### Core Endpoints
-
-- `GET /health` - Health check
-- `POST /decisions/evaluate` - Evaluate decisions
-- `POST /risk/assess` - Risk assessment
-- `GET /autonomy/level` - Get autonomy level
-- `POST /autonomy/should-execute` - Auto-execute check
-- `POST /memory/insights` - Memory insights
-
-### Analytics Endpoints
-
-- `GET /analytics/stats` - Usage statistics
-- `GET /analytics/endpoints` - Top endpoints
-- `GET /analytics/performance` - Performance metrics
-
-### Key Management
-
-- `GET /api/keys/list` - List API keys
-- `POST /api/keys/generate` - Generate new key
-- `POST /api/keys/deactivate` - Deactivate key
-
-See [API Documentation](api/README.md) for complete reference.
-
----
-
-## 💻 Integration Examples
-
-### Python
-
-```python
-import requests
-
-headers = {
-    "X-API-Key": "YOUR_API_KEY",
-    "Content-Type": "application/json"
-}
-
-response = requests.post(
-    "https://api.example.com/decisions/evaluate",
-    json={"category": "FINANCIAL", "amount": 1000},
-    headers=headers
-)
-```
-
-### JavaScript
-
-```javascript
-const response = await fetch('https://api.example.com/decisions/evaluate', {
-    method: 'POST',
-    headers: {
-        'X-API-Key': 'YOUR_API_KEY',
-        'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-        category: 'FINANCIAL',
-        amount: 1000
-    })
-});
-```
-
-More examples in [examples/](examples/) directory.
-
----
-
-## 🛠️ Tools & Scripts
-
-### CLI Tools
-
-- `api/manage_api_keys.py` - API key management
-- `api/analytics_dashboard.py` - Analytics viewer
-- `scripts/prepare_launch.py` - Launch readiness check
-- `scripts/deploy_automated.py` - Deployment automation
-
-### Web Interfaces
-
-- User Dashboard: `dashboard/index.html`
-- API Docs: `docs/index.html`
-- Status Page: `status_page.html`
-
----
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-python api/test_api.py
-python api/test_comprehensive.py
-
-# Check code quality
-python scripts/check_code_quality.py
-```
-
----
-
-## 🚀 Deployment
-
-### Quick Deploy
-
-```bash
-python scripts/deploy_automated.py <platform>
-```
-
-### Supported Platforms
-
-- Local
-- Docker
-- Railway
-- Heroku
-- Render
-
-See [Deployment Guide](DEPLOYMENT_GUIDE.md) for details.
-
----
-
-## 📊 Project Statistics
-
-- **Total Files**: 208+
-- **Python Files**: 57
-- **Lines of Code**: 9,310+
-- **API Endpoints**: 18+
-- **Test Coverage**: Comprehensive
-
----
-
-## 🔒 Security
-
-- API key authentication
-- Rate limiting per key
-- Tier-based access control
-- Request tracking
-- Production-ready security
-
-
----
-
-## 📈 Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for future plans and features.
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! See contributing guidelines (coming soon).
-
----
-
-## 📄 License
-
-Proprietary - All rights reserved
-
----
-
-## 📞 Support
-
-- **Documentation**: See `/docs` endpoint
-- **Issues**: GitHub Issues
-- **Email**: see GitHub issues
-
----
-
-## 🎉 Status
-
-**Production Ready** ✅
-
-All core features implemented, tested, and ready for deployment.
-
----
-
-*Built with ❤️ by AI Decision Engine*
-
-*Last Updated: November 2025*
-

@@ -304,14 +304,3 @@ def initialize_memory():
     
     memory.save_memories()
     return memory
-
-
-if __name__ == "__main__":
-    # Initialize memory
-    memory = initialize_memory()
-    
-    print("AI Memory System Initialized")
-    print(f"Total Events: {memory.get_memory_summary()['total_events']}")
-    print(f"Recent Activity: {memory.get_recent_activity(24)}")
-    print("\nMemory saved to: ai_memory.json")
-

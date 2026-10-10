@@ -52,3 +52,15 @@ autonomy_tracker.json
 *.log
 api_analytics.json
 backups/
+
+# local runtime state and tooling
+.venv/
+.pytest_cache/
+api_keys.json
+rate_limits.json
+subscriptions.json
+marketing_analytics.json
+api_analytics.json
+api_cache.json
+decision_log.json
+webhooks.json

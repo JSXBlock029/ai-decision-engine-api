@@ -5,30 +5,13 @@ Provides analytics data via API
 
 from fastapi import APIRouter, Depends, HTTPException
 from api.analytics import api_analytics
-from api.api_key_manager import api_key_manager
+from api.admin_auth import verify_admin
 from typing import Dict, Any, Optional
 from datetime import datetime
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-def verify_admin_key(x_api_key: Optional[str] = None) -> Dict[str, Any]:
-    """Verify admin API key for analytics access"""
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="API key required")
-    
-    key_info = api_key_manager.validate_api_key(x_api_key)
-    if not key_info:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    # Only allow pro/enterprise tiers to access analytics
-    tier = key_info.get("tier", "").lower()
-    if tier not in ["pro", "enterprise", "dev"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Analytics access requires Pro or Enterprise tier"
-        )
-    
-    return key_info
+verify_admin_key = verify_admin
 
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_analytics_stats(
@@ -39,7 +22,7 @@ async def get_analytics_stats(
     Get API analytics statistics
     
     - **days**: Number of days to analyze (default: 30)
-    - Requires Pro or Enterprise tier API key
+    - Requires the admin key (X-Admin-Key)
     """
     try:
         stats = api_analytics.get_stats(days=days)
@@ -51,7 +34,7 @@ async def get_analytics_stats(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error generating analytics: {str(e)}"
+            detail="Error generating analytics"
         )
 
 @router.get("/endpoint/{endpoint_path:path}", response_model=Dict[str, Any])
@@ -63,7 +46,7 @@ async def get_endpoint_stats(
     Get statistics for a specific endpoint
     
     - **endpoint_path**: Path of the endpoint (e.g., "/decisions/evaluate")
-    - Requires Pro or Enterprise tier API key
+    - Requires the admin key (X-Admin-Key)
     """
     try:
         stats = api_analytics.get_endpoint_stats(endpoint_path)
@@ -76,7 +59,7 @@ async def get_endpoint_stats(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error getting endpoint stats: {str(e)}"
+            detail="Error getting endpoint stats"
         )
 
 @router.post("/export", response_model=Dict[str, Any])
@@ -86,7 +69,7 @@ async def export_analytics_report(
     """
     Export analytics report as JSON
     
-    - Requires Pro or Enterprise tier API key
+    - Requires the admin key (X-Admin-Key)
     """
     try:
         report = api_analytics.export_report()
@@ -99,6 +82,6 @@ async def export_analytics_report(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error exporting report: {str(e)}"
+            detail="Error exporting report"
         )
 

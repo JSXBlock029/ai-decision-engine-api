@@ -7,8 +7,14 @@ from fastapi import FastAPI, Header, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
+import html
+import re
+import time
+from collections import defaultdict, deque
+from api.admin_auth import verify_admin
+from api.api_key_manager import hash_key
 from datetime import datetime
 import os
 import logging
@@ -39,7 +45,7 @@ cors_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins if "*" not in cors_origins else ["*"],
-    allow_credentials=True,
+    allow_credentials="*" not in cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -102,13 +108,45 @@ def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -
     }
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+
+def _valid_email(value: Optional[str]) -> bool:
+    return bool(value) and len(value) <= 254 and bool(_EMAIL_RE.match(value.strip()))
+
+
+_FREE_KEY_LIMIT = int(os.getenv("FREE_KEY_LIMIT_PER_HOUR", "5"))
+_free_key_hits: Dict[str, deque] = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    if os.getenv("TRUST_PROXY", "").lower() in ("1", "true", "yes"):
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _free_key_allowed(ip: str) -> bool:
+    """Sliding one-hour window per client IP. In-memory: resets on restart."""
+    now = time.time()
+    hits = _free_key_hits[ip]
+    while hits and now - hits[0] > 3600:
+        hits.popleft()
+    if len(hits) >= _FREE_KEY_LIMIT:
+        return False
+    hits.append(now)
+    return True
+
+
 # Pydantic models for request validation
 class DecisionEvaluationRequest(BaseModel):
     category: str = Field(..., description="Decision category")
     amount: float = Field(default=0.0, ge=0, description="Amount involved")
     description: str = Field(default="", max_length=1000, description="Decision description")
     
-    @validator('category')
+    @field_validator('category')
+    @classmethod
     def validate_category(cls, v):
         valid_categories = [cat.name for cat in DecisionCategory]
         if v.upper() not in valid_categories:
@@ -121,7 +159,8 @@ class RiskAssessmentRequest(BaseModel):
     category: str = Field(default="OPERATIONAL", description="Decision category")
     description: str = Field(default="", max_length=1000, description="Risk assessment description")
     
-    @validator('category')
+    @field_validator('category')
+    @classmethod
     def validate_category(cls, v):
         valid_categories = [cat.name for cat in DecisionCategory]
         if v.upper() not in valid_categories:
@@ -133,7 +172,8 @@ class AutoExecuteRequest(BaseModel):
     task_type: str = Field(..., description="Type of task")
     risk_level: str = Field(default="LOW", description="Risk level")
     
-    @validator('risk_level')
+    @field_validator('risk_level')
+    @classmethod
     def validate_risk_level(cls, v):
         valid_levels = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
         if v.upper() not in valid_levels:
@@ -151,10 +191,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """Handle validation errors"""
     logger.warning(f"Validation error: {exc.errors()}")
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=422,
         content={
             "error": "Validation Error",
-            "details": exc.errors(),
+            "details": [{"loc": list(e.get("loc", [])), "msg": str(e.get("msg", "")), "type": e.get("type", "")} for e in exc.errors()],
             "message": "Invalid request data"
         }
     )
@@ -421,7 +461,7 @@ async def evaluate_decision(
         logger.error(f"Error evaluating decision: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error evaluating decision: {str(e)}"
+            detail="Error evaluating decision"
         )
 
 
@@ -474,7 +514,7 @@ async def assess_risk(
         logger.error(f"Error assessing risk: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error assessing risk: {str(e)}"
+            detail="Error assessing risk"
         )
 
 
@@ -513,7 +553,7 @@ async def get_autonomy_level(
         logger.error(f"Error getting autonomy level: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting autonomy level: {str(e)}"
+            detail="Error getting autonomy level"
         )
 
 
@@ -550,7 +590,7 @@ async def should_auto_execute(
         logger.error(f"Error checking execution: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error checking execution: {str(e)}"
+            detail="Error checking execution"
         )
 
 
@@ -584,7 +624,7 @@ async def get_memory_insights(
         logger.error(f"Error getting memory insights: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting memory insights: {str(e)}"
+            detail="Error getting memory insights"
         )
 
 
@@ -653,7 +693,7 @@ async def create_checkout_session(checkout_request: CheckoutRequest):
     """
     try:
         # Validate email format
-        if not checkout_request.email or '@' not in checkout_request.email:
+        if not _valid_email(checkout_request.email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid email address format"
@@ -895,7 +935,7 @@ PAYMENT_SUCCESS_HTML = """<!DOCTYPE html>
 </html>"""
 
 
-@app.get("/payment/success", response_class=HTMLResponse)
+@app.get("/payment/success")
 async def payment_success(request: Request, session_id: Optional[str] = None):
     """
     Payment success page - called after successful Stripe checkout
@@ -928,56 +968,56 @@ async def payment_success(request: Request, session_id: Optional[str] = None):
         tier = session.metadata.get("tier", "pro") if session.metadata else "pro"
         customer_email = session.customer_email or session.metadata.get("customer_email", "") if session.metadata else ""
         
-        # Check if we already generated an API key for this session
-        subscription_id = session.subscription if hasattr(session, 'subscription') and session.subscription else None
-        
-        # Try to get existing API key from subscription
-        existing_api_key = None
-        if subscription_id:
-            existing_api_key = stripe_service.get_api_key_from_subscription(subscription_id)
-        
-        # Generate new API key if we don't have one
-        if not existing_api_key:
-            logger.info(f"Generating new API key for tier: {tier}, email: {customer_email}")
-            api_key = api_key_manager.generate_api_key(tier=tier, prefix=f"{tier}_sub")
-            
-            # Link subscription to API key if we have a subscription
-            if subscription_id:
-                stripe_service.link_subscription_to_api_key(
-                    api_key=api_key,
-                    subscription_id=subscription_id,
-                    customer_email=customer_email,
-                    tier=tier
-                )
-                logger.info(f"Linked subscription {subscription_id} to API key")
-        else:
-            logger.info(f"Using existing API key for subscription {subscription_id}")
-            api_key = existing_api_key
-        
+        # Never issue a key for an unpaid session
+        if getattr(session, "payment_status", None) != "paid" or not getattr(session, "subscription", None):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="Payment has not been completed for this session.",
+            )
+        subscription_id = session.subscription
+
+        if stripe_service.get_api_key_hash_from_subscription(subscription_id):
+            # Keys are stored hashed, so a key can only be shown once, right after purchase.
+            note = "An API key was already issued for this subscription. Contact support if you lost it."
+            if "text/html" in accept_header.lower():
+                return HTMLResponse(content=PAYMENT_SUCCESS_HTML.replace("Loading your API key...", html.escape(note)))
+            return {"message": note, "tier": tier, "subscription_id": subscription_id}
+
+        logger.info(f"Generating new API key for tier: {tier}")
+        api_key = api_key_manager.generate_api_key(tier=tier, prefix=f"{tier}_sub")
+        stripe_service.link_subscription_to_api_key(
+            api_key=api_key,
+            subscription_id=subscription_id,
+            customer_email=customer_email,
+            tier=tier,
+        )
+
         # Return HTML for browsers, JSON for API clients
         if "text/html" in accept_header.lower():
-            html = PAYMENT_SUCCESS_HTML.replace("Loading your API key...", api_key)
-            html = html.replace('id="tier">-</span>', f'id="tier">{tier.upper()}</span>')
-            html = html.replace('id="requests">-</span>', f'id="requests">{PRICING_TIERS.get(tier, {}).get("requests_per_month", 0):,}</span>')
-            return HTMLResponse(content=html)
-        
+            page = PAYMENT_SUCCESS_HTML.replace("Loading your API key...", html.escape(api_key))
+            page = page.replace('id="tier">-</span>', f'id="tier">{html.escape(tier.upper())}</span>')
+            page = page.replace('id="requests">-</span>', f'id="requests">{PRICING_TIERS.get(tier, {}).get("requests_per_month", 0):,}</span>')
+            return HTMLResponse(content=page)
+
         return {
-            "message": "Payment successful!",
+            "message": "Payment successful! Save this key now, it cannot be shown again.",
             "api_key": api_key,
             "tier": tier,
             "requests_per_month": PRICING_TIERS.get(tier, {}).get("requests_per_month", 0),
-            "subscription_id": subscription_id
+            "subscription_id": subscription_id,
         }
-    except stripe.error.StripeError as e:
+    except HTTPException:
+        raise
+    except stripe.StripeError as e:
         logger.error(f"Stripe error processing payment success: {e}", exc_info=True)
         if "text/html" in accept_header.lower():
-            return HTMLResponse(content=PAYMENT_SUCCESS_HTML.replace("Loading your API key...", f"Stripe error: {str(e)}. Please contact support with session ID: {session_id}"))
-        return {"error": f"Stripe error: {str(e)}", "session_id": session_id}
+            return HTMLResponse(content=PAYMENT_SUCCESS_HTML.replace("Loading your API key...", "A payment provider error occurred. Please contact support with session ID: " + html.escape(str(session_id))))
+        return {"error": "Payment provider error", "session_id": session_id}
     except Exception as e:
         logger.error(f"Error processing payment success: {e}", exc_info=True)
         if "text/html" in accept_header.lower():
-            return HTMLResponse(content=PAYMENT_SUCCESS_HTML.replace("Loading your API key...", f"Error: {str(e)}. Please contact support with session ID: {session_id}"))
-        return {"error": str(e), "session_id": session_id}
+            return HTMLResponse(content=PAYMENT_SUCCESS_HTML.replace("Loading your API key...", "Something went wrong. Please contact support with session ID: " + html.escape(str(session_id))))
+        return {"error": "Internal error", "session_id": session_id}
 
 
 @app.get("/payment/cancel")
@@ -1043,15 +1083,10 @@ async def stripe_webhook(request: Request):
             stripe_service.update_subscription_status(subscription_id, "cancelled")
             
             # Optionally downgrade API key to free tier
-            api_key = stripe_service.get_api_key_from_subscription(subscription_id)
-            if api_key:
-                keys = api_key_manager._load_keys()
-                if api_key in keys:
-                    keys[api_key]["tier"] = "free"
-                    keys[api_key]["requests_per_month"] = 100
-                    api_key_manager._save_keys(keys)
-                    logger.info(f"Downgraded API key {api_key[:10]}... to free tier")
-        
+            digest = stripe_service.get_api_key_hash_from_subscription(subscription_id)
+            if digest and api_key_manager.set_tier_by_digest(digest, "free"):
+                logger.info(f"Downgraded the API key for subscription {subscription_id} to free tier")
+
         return {"status": "success", "event": event_type}
     
     except HTTPException:
@@ -1060,7 +1095,7 @@ async def stripe_webhook(request: Request):
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing webhook: {str(e)}"
+            detail="Error processing webhook"
         )
 
 
@@ -1085,7 +1120,7 @@ async def get_subscription_status(
         subscription_id = None
         
         for sub_id, sub_data in subscriptions.items():
-            if sub_data.get("api_key") == x_api_key:
+            if sub_data.get("api_key_hash") == hash_key(x_api_key):
                 subscription_id = sub_id
                 break
         
@@ -1124,7 +1159,7 @@ async def get_subscription_status(
         logger.error(f"Error getting subscription status: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting subscription status: {str(e)}"
+            detail="Error getting subscription status"
         )
 
 
@@ -1617,26 +1652,6 @@ PRICING_PAGE_HTML = """<!DOCTYPE html>
 </html>"""
 
 
-@app.get("/debug/stripe-config")
-async def debug_stripe_config():
-    """Debug endpoint to check Stripe configuration (remove in production)"""
-    import stripe
-    from api.stripe_service import STRIPE_AVAILABLE, STRIPE_WEBHOOK_SECRET
-    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-    config = {
-        "stripe_installed": STRIPE_AVAILABLE,
-        "stripe_module_available": hasattr(stripe, 'api_key') if stripe else False,
-        "stripe_key_set": bool(os.getenv("STRIPE_SECRET_KEY", "")),
-        "stripe_key_length": len(os.getenv("STRIPE_SECRET_KEY", "")),
-        "stripe_key_prefix": os.getenv("STRIPE_SECRET_KEY", "")[:7] if os.getenv("STRIPE_SECRET_KEY", "") else "not set",
-        "webhook_secret_set": bool(webhook_secret),
-        "webhook_secret_length": len(webhook_secret),
-        "webhook_secret_prefix": webhook_secret[:7] if webhook_secret else "not set",
-        "api_base_url": os.getenv("API_BASE_URL", "not set")
-    }
-    return config
-
-
 @app.get("/pricing", response_class=HTMLResponse)
 async def get_pricing(request: Request):
     """
@@ -1706,7 +1721,7 @@ async def get_pricing(request: Request):
             logger.error(f"Error getting pricing: {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error getting pricing: {str(e)}"
+                detail="Error getting pricing"
             )
     
     # Default: Return HTML for browsers
@@ -1730,12 +1745,18 @@ async def generate_free_api_key(request_body: FreeKeyRequest, http_request: Requ
         from api.api_key_manager import api_key_manager
         
         # Validate email format
-        if not request_body.email or '@' not in request_body.email:
+        if not _valid_email(request_body.email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid email address format"
             )
         
+        if not _free_key_allowed(_client_ip(http_request)):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many key requests from this address. Try again later.",
+            )
+
         # Normalize email
         email = request_body.email.strip().lower()
         
@@ -1762,7 +1783,7 @@ async def generate_free_api_key(request_body: FreeKeyRequest, http_request: Requ
         try:
             from api.marketing_analytics import marketing_analytics
             marketing_analytics.track_signup(
-                api_key=api_key,
+                api_key=hash_key(api_key),
                 utm_source=utm_source,
                 utm_campaign=utm_campaign
             )
@@ -1786,7 +1807,7 @@ async def generate_free_api_key(request_body: FreeKeyRequest, http_request: Requ
         logger.error(f"Error generating free API key: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating API key: {str(e)}"
+            detail="Error generating API key"
         )
 
 
@@ -1830,7 +1851,7 @@ async def get_usage(
         logger.error(f"Error getting usage: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting usage: {str(e)}"
+            detail="Error getting usage"
         )
 
 
@@ -1844,47 +1865,6 @@ app.include_router(key_management_router)
 
 
 # ==================== User Dashboard Endpoints ====================
-
-@app.get("/api/usage")
-async def get_usage(key_info: Dict[str, Any] = Depends(verify_api_key)):
-    """
-    Get usage statistics for the authenticated API key
-
-    Returns:
-    - total_requests: Total requests this month
-    - included_requests: Requests included in your plan
-    - overage_requests: Requests beyond your plan
-    - max_requests: Maximum requests for your tier
-    - tier: Your subscription tier
-    - month: Current billing month
-
-    Requires: X-API-Key header
-    """
-    try:
-        api_key = key_info["api_key"].replace("...", "")  # Get the truncated key
-
-        # We need the full key - let's get it from the header
-        from fastapi import Request
-
-        # Get usage stats
-        usage_stats = api_key_manager.get_usage_stats(key_info.get("_full_key", ""))
-
-        return {
-            "success": True,
-            "usage": usage_stats,
-            "reset_date": f"{usage_stats.get('month', '')}-01",
-            "tier_info": {
-                "tier": key_info.get("tier", "free"),
-                "included_requests": key_info.get("requests_per_month", 100)
-            }
-        }
-    except Exception as e:
-        logger.error(f"Error getting usage: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting usage statistics"
-        )
-
 
 @app.get("/api/billing")
 async def get_billing(key_info: Dict[str, Any] = Depends(verify_api_key)):
@@ -1927,7 +1907,7 @@ async def get_billing(key_info: Dict[str, Any] = Depends(verify_api_key)):
 
 
 @app.get("/api/marketing/stats", response_model=Dict[str, Any])
-async def get_marketing_stats(days: int = 30):
+async def get_marketing_stats(days: int = 30, _admin: bool = Depends(verify_admin)):
     """
     Get marketing analytics and traffic source statistics
     
@@ -1937,7 +1917,7 @@ async def get_marketing_stats(days: int = 30):
     - Conversion rates
     - Daily statistics
     
-    No authentication required (public stats)
+    Requires the admin key (X-Admin-Key).
     """
     try:
         from api.marketing_analytics import marketing_analytics
@@ -1955,7 +1935,7 @@ async def get_marketing_stats(days: int = 30):
         logger.error(f"Error getting marketing stats: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting marketing statistics: {str(e)}"
+            detail="Error getting marketing statistics"
         )
 
 
