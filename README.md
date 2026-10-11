@@ -1,5 +1,7 @@
 # AI Decision Engine API
 
+[![CI](https://github.com/lowriskbtc/ai-decision-engine-api/actions/workflows/ci.yml/badge.svg)](https://github.com/lowriskbtc/ai-decision-engine-api/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A FastAPI service that scores decisions by risk, remembers past outcomes, and gates how much an automated system may do on its own. It ships with API-key authentication, tiered quotas, optional Stripe subscriptions, and usage analytics.
 
 The decision logic is deliberately simple and explainable: risk comes from amount thresholds, and an "autonomy level" that grows with recorded successes decides whether a task may run without a human. It is a framework for wiring that gate into your own agents, not a model.
